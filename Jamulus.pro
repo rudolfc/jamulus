@@ -280,8 +280,10 @@ win32 {
         HEADERS += $$OBOE_HEADERS
         SOURCES += $$OBOE_SOURCES
         DISTFILES += $$DISTFILES_OBOE
-} else:unix {
-    # we want to compile with C++11
+} else:haiku {
+    message(OS is Haiku)
+
+     # we want to compile with C++11
     CONFIG += c++11
 
     # we assume to have lrintf() one moderately modern linux distributions
@@ -290,6 +292,16 @@ win32 {
 
     # we assume that stdint.h is always present in a Linux system
     DEFINES += HAVE_STDINT_H
+
+    # tell the source we are on Haiku
+    DEFINES += HAIKU
+
+    # the posix network functions are in libnetwork.so on Haiku
+    LIBS += /boot/system/lib/libnetwork.so
+
+    # temporary as we need to add audio nodes for haiku in order to make sound work
+    message(Forcing nosound)
+    CONFIG += nosound
 
     # only include jack support if CONFIG nosound is not set
     !contains(CONFIG, "nosound") {
@@ -334,7 +346,7 @@ win32 {
     icons.files = distributions/jamulus.png
 
     INSTALLS += target desktop icons
-} else:haiku {
+} else:unix {
     # we want to compile with C++11
     CONFIG += c++11
 
@@ -344,12 +356,6 @@ win32 {
 
     # we assume that stdint.h is always present in a Linux system
     DEFINES += HAVE_STDINT_H
-
-    # the posix network functions are in libnetwork.so on Haiku
-    LIBS += /boot/system/lib/libnetwork.so
-	
-	# temporary as we need to add audio nodes for haiku in order to make sound work.. yeah
-	CONFIG += nosound
 
     # only include jack support if CONFIG nosound is not set
     !contains(CONFIG, "nosound") {
