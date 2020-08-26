@@ -1131,7 +1131,8 @@ public:
         OT_LINUX = 2,
         OT_ANDROID = 3,
         OT_I_OS = 4,
-        OT_UNIX = 5
+        OT_UNIX = 5,
+        OT_HAIKU = 6
     };
 
     static QString GetOperatingSystemString ( const EOpSystemType eOSType )
@@ -1144,6 +1145,7 @@ public:
         case OT_ANDROID: return "Android";
         case OT_I_OS:    return "iOS";
         case OT_UNIX:    return "Unix";
+        case OT_HAIKU:	return "Haiku";
         default:         return "Unknown";
         }
     }
@@ -1156,6 +1158,8 @@ public:
     return OT_MAC_OS;
 #elif defined ( ANDROID )
     return OT_ANDROID;
+#elif defined ( HAIKU )
+    return OT_HAIKU;
 #else
     return OT_LINUX;
 #endif
