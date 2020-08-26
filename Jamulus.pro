@@ -334,6 +334,66 @@ win32 {
     icons.files = distributions/jamulus.png
 
     INSTALLS += target desktop icons
+} else:haiku {
+    # we want to compile with C++11
+    CONFIG += c++11
+
+    # we assume to have lrintf() one moderately modern linux distributions
+    # would be better to have that tested, though
+    DEFINES += HAVE_LRINTF
+
+    # we assume that stdint.h is always present in a Linux system
+    DEFINES += HAVE_STDINT_H
+
+    # the posix network functions are in libnetwork.so on Haiku
+    LIBS += /boot/system/lib/libnetwork.so
+	
+	# temporary as we need to add audio nodes for haiku in order to make sound work.. yeah
+	CONFIG += nosound
+
+    # only include jack support if CONFIG nosound is not set
+    !contains(CONFIG, "nosound") {
+        message(Jack Audio Interface Enabled.)
+
+        contains(CONFIG, "raspijamulus") {
+            message(Using Jack Audio in raspijamulus.sh mode.)
+            LIBS += -ljack
+        } else {
+            CONFIG += link_pkgconfig
+            PKGCONFIG += jack
+        }
+
+        HEADERS += linux/sound.h
+        SOURCES += linux/sound.cpp
+        DEFINES += WITH_SOUND
+    }
+
+    isEmpty(PREFIX) {
+        PREFIX = /usr/local
+    }
+
+    isEmpty(BINDIR) {
+        BINDIR = bin
+    }
+    BINDIR = $$absolute_path($$BINDIR, $$PREFIX)
+    target.path = $$BINDIR
+
+    isEmpty(APPSDIR) {
+        APPSDIR = share/applications
+    }
+    APPSDIR = $$absolute_path($$APPSDIR, $$PREFIX)
+    desktop.path = $$APPSDIR
+    QMAKE_SUBSTITUTES += distributions/jamulus.desktop.in
+    desktop.files = distributions/jamulus.desktop
+
+    isEmpty(ICONSDIR) {
+        ICONSDIR = share/icons/hicolor/512x512/apps
+    }
+    ICONSDIR = $$absolute_path($$ICONSDIR, $$PREFIX)
+    icons.path = $$ICONSDIR
+    icons.files = distributions/jamulus.png
+
+    INSTALLS += target desktop icons
 }
 
 RCC_DIR = src/res
