@@ -29,11 +29,9 @@
 #include <QDateTime>
 #include <QHostAddress>
 #include <QFileInfo>
+#include <QtConcurrent>
+#include <QFutureSynchronizer>
 #include <algorithm>
-#ifdef USE_MULTITHREADING
-# include <QtConcurrent>
-# include <QFutureSynchronizer>
-#endif
 #ifdef USE_OPUS_SHARED_LIB
 # include "opus/opus_custom.h"
 #else
@@ -184,6 +182,7 @@ public:
               const bool         bNCentServPingServerInList,
               const bool         bNDisconnectAllClientsOnQuit,
               const bool         bNUseDoubleSystemFrameSize,
+              const bool         bNUseMultithreading,
               const ELicenceType eNLicenceType );
 
     virtual ~CServer();
@@ -202,6 +201,9 @@ public:
                           CVector<int>&          veciJitBufNumFrames,
                           CVector<int>&          veciNetwFrameSizeFact );
 
+    void CreateCLServerListReqVerAndOSMes ( const CHostAddress& InetAddr )
+        { ConnLessProtocol.CreateCLReqVersionAndOSMes ( InetAddr ); }
+
 
     // Jam recorder ------------------------------------------------------------
     bool GetRecorderInitialised() { return JamController.GetRecorderInitialised(); }
@@ -216,7 +218,7 @@ public:
     void SetRecordingDir( QString newRecordingDir )
         { JamController.SetRecordingDir ( newRecordingDir, iServerFrameSizeSamples ); }
 
-    virtual void CreateAndSendRecorderStateForAllConChannels();
+    void CreateAndSendRecorderStateForAllConChannels();
 
 
     // Server list management --------------------------------------------------
@@ -304,8 +306,11 @@ protected:
 
     void WriteHTMLChannelList();
 
+    void MixEncodeTransmitDataBlocks ( const int iStartChanCnt,
+                                       const int iStopChanCnt,
+                                       const int iNumClients );
+
     void MixEncodeTransmitData ( const int iChanCnt,
-                                 const int iCurChanID,
                                  const int iNumClients );
 
     virtual void customEvent ( QEvent* pEvent );
@@ -313,6 +318,10 @@ protected:
     // if server mode is normal or double system frame size
     bool                       bUseDoubleSystemFrameSize;
     int                        iServerFrameSizeSamples;
+
+    // variables needed for multithreading support
+    bool                      bUseMultithreading;
+    QFutureSynchronizer<void> FutureSynchronizer;
 
     bool CreateLevelsForAllConChannels  ( const int                        iNumClients,
                                           const CVector<int>&              vecNumAudioChannels,
@@ -400,6 +409,10 @@ signals:
                       const CHostAddress     RecHostAddr,
                       const int              iNumAudChan,
                       const CVector<int16_t> vecsData );
+
+    void CLVersionAndOSReceived ( CHostAddress           InetAddr,
+                                  COSUtil::EOpSystemType eOSType,
+                                  QString                strVersion );
 
     // pass through from jam controller
     void RestartRecorder();

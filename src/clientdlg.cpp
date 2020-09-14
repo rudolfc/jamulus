@@ -225,6 +225,11 @@ CClientDlg::CClientDlg ( CClient*         pNCliP,
     lblGlobalInfoLabel->setStyleSheet ( ".QLabel { background: red; }" );
     lblGlobalInfoLabel->hide();
 
+    // prepare update check info label (invisible by default)
+    lblUpdateCheck->setText ( "<font color=""red""><b>" + QString ( APP_NAME ) + " " +
+                              tr ( "software upgrade available" ) + "</b></font>" );
+    lblUpdateCheck->hide();
+
 
     // Connect on startup ------------------------------------------------------
     if ( !strConnOnStartupAddress.isEmpty() )
@@ -437,13 +442,8 @@ CClientDlg::CClientDlg ( CClient*         pNCliP,
     QObject::connect ( pClient, &CClient::VersionAndOSReceived,
         this, &CClientDlg::OnVersionAndOSReceived );
 
-#ifdef ENABLE_CLIENT_VERSION_AND_OS_DEBUGGING
     QObject::connect ( pClient, &CClient::CLVersionAndOSReceived,
         this, &CClientDlg::OnCLVersionAndOSReceived );
-#endif
-
-    QObject::connect ( QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
-        this, &CClientDlg::OnAboutToQuit );
 
     QObject::connect ( &ClientSettingsDlg, &CClientSettingsDlg::GUIDesignChanged,
         this, &CClientDlg::OnGUIDesignChanged );
@@ -500,6 +500,17 @@ CClientDlg::CClientDlg ( CClient*         pNCliP,
     if ( bMuteStream )
     {
         chbLocalMute->setCheckState ( Qt::Checked );
+    }
+
+    // query the central server version number needed for update check (note
+    // that the connection less message respond may not make it back but that
+    // is not critical since the next time Jamulus is started we have another
+    // chance and the update check is not time-critical at all)
+    CHostAddress CentServerHostAddress;
+
+    if ( NetworkUtil().ParseNetworkAddress ( DEFAULT_SERVER_ADDRESS, CentServerHostAddress ) )
+    {
+        pClient->CreateCLServerListReqVerAndOSMes ( CentServerHostAddress );
     }
 }
 
@@ -735,6 +746,26 @@ void CClientDlg::OnVersionAndOSReceived ( COSUtil::EOpSystemType ,
 #endif
 }
 
+void CClientDlg::OnCLVersionAndOSReceived ( CHostAddress           InetAddr,
+                                            COSUtil::EOpSystemType eOSType,
+                                            QString                strVersion )
+{
+    // update check
+#if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0)
+    if ( QVersionNumber::compare ( QVersionNumber::fromString ( strVersion ), QVersionNumber::fromString ( VERSION ) ) > 0 )
+    {
+        lblUpdateCheck->show();
+    }
+#endif
+
+#ifdef ENABLE_CLIENT_VERSION_AND_OS_DEBUGGING
+    ConnectDlg.SetVersionAndOSType ( InetAddr, eOSType, strVersion );
+#else
+    Q_UNUSED ( InetAddr ) // avoid compiler warnings
+    Q_UNUSED ( eOSType )  // avoid compiler warnings
+#endif
+}
+
 void CClientDlg::OnChatTextReceived ( QString strChatText )
 {
     ChatDlg.AddChatText ( strChatText );
@@ -795,8 +826,9 @@ void CClientDlg::OnNumClientsChanged ( int iNewNumClients )
 
 void CClientDlg::SetMyWindowTitle ( const int iNumClients )
 {
-    // show number of connected clients in window title (and therefore also in
-    // the task bar of the OS)
+    // set the window title (and therefore also the task bar icon text of the OS)
+    // according to the following specification (#559):
+    // <ServerName> - <N> users - Jamulus
     if ( iNumClients == 0 )
     {
         // only application name
@@ -804,15 +836,18 @@ void CClientDlg::SetMyWindowTitle ( const int iNumClients )
     }
     else
     {
+        QString strWinTitle = MainMixerBoard->GetServerName();
+
         if ( iNumClients == 1 )
         {
-            setWindowTitle ( QString ( pClient->strClientName ) + " (1 " + tr ( "user" ) + ")" );
+            strWinTitle += " - 1 " + tr ( "user" );
         }
-        else
+        else if ( iNumClients > 1 )
         {
-            setWindowTitle ( QString ( pClient->strClientName ) +
-                QString ( " (%1 " + tr ( "users" ) + ")" ).arg ( iNumClients ) );
+            strWinTitle += " - " + QString::number ( iNumClients ) + " " + tr ( "users" );
         }
+
+        setWindowTitle ( strWinTitle + " - " + pClient->strClientName );
     }
 
 #if defined ( __APPLE__ ) || defined ( __MACOSX )

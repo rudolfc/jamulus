@@ -232,8 +232,10 @@ CServer::CServer ( const int          iNewMaxNumChan,
                    const bool         bNCentServPingServerInList,
                    const bool         bNDisconnectAllClientsOnQuit,
                    const bool         bNUseDoubleSystemFrameSize,
+                   const bool         bNUseMultithreading,
                    const ELicenceType eNLicenceType ) :
     bUseDoubleSystemFrameSize   ( bNUseDoubleSystemFrameSize ),
+    bUseMultithreading          ( bNUseMultithreading ),
     iMaxNumChannels             ( iNewMaxNumChan ),
     Socket                      ( this, iPortNumber ),
     Logging                     ( ),
@@ -458,6 +460,9 @@ CServer::CServer ( const int          iNewMaxNumChan,
     QObject::connect ( &ConnLessProtocol, &CProtocol::CLReqVersionAndOS,
         this, &CServer::OnCLReqVersionAndOS );
 
+    QObject::connect ( &ConnLessProtocol, &CProtocol::CLVersionAndOSReceived,
+        this, &CServer::CLVersionAndOSReceived );
+
     QObject::connect ( &ConnLessProtocol, &CProtocol::CLReqConnClientsList,
         this, &CServer::OnCLReqConnClientsList );
 
@@ -590,6 +595,9 @@ void CServer::OnNewConnection ( int          iChID,
     // inform the client about its own ID at the server (note that this
     // must be the first message to be sent for a new connection)
     vecChannels[iChID].CreateClientIDMes ( iChID );
+
+    // query support for split messages in the client
+    vecChannels[iChID].CreateReqSplitMessSupportMes();
 
     // on a new connection we query the network transport properties for the
     // audio packets (to use the correct network block size and audio
@@ -835,8 +843,8 @@ static CTimingMeas JitterMeas ( 1000, "test2.dat" ); JitterMeas.Measure(); // TE
             // update conversion buffer size (nothing will happen if the size stays the same)
             if ( vecUseDoubleSysFraSizeConvBuf[i] )
             {
-                DoubleFrameSizeConvBufIn[iCurChanID].SetBufferSize  ( DOUBLE_SYSTEM_FRAME_SIZE_SAMPLES  * vecNumAudioChannels[i] );
-                DoubleFrameSizeConvBufOut[iCurChanID].SetBufferSize ( DOUBLE_SYSTEM_FRAME_SIZE_SAMPLES  * vecNumAudioChannels[i] );
+                DoubleFrameSizeConvBufIn[iCurChanID].SetBufferSize  ( DOUBLE_SYSTEM_FRAME_SIZE_SAMPLES * vecNumAudioChannels[i] );
+                DoubleFrameSizeConvBufOut[iCurChanID].SetBufferSize ( DOUBLE_SYSTEM_FRAME_SIZE_SAMPLES * vecNumAudioChannels[i] );
             }
 
             // select the opus decoder and raw audio frame length
@@ -965,10 +973,6 @@ static CTimingMeas JitterMeas ( 1000, "test2.dat" ); JitterMeas.Measure(); // TE
 
 
     // Process data ------------------------------------------------------------
-#ifdef USE_MULTITHREADING
-    QFutureSynchronizer<void> FutureSynchronizer;
-#endif
-
     // Check if at least one client is connected. If not, stop server until
     // one client is connected.
     if ( iNumClients > 0 )
@@ -1008,24 +1012,42 @@ static CTimingMeas JitterMeas ( 1000, "test2.dat" ); JitterMeas.Measure(); // TE
                                   vecvecsData[iChanCnt] );
             }
 
-            // generate a separate mix for each channel, OPUS encode the
-            // audio data and transmit the network packet (note that if
-            // multithreading is enabled, the work is distributed over
-            // all available processor cores)
-#ifdef USE_MULTITHREADING
-            // by using the future synchronizer we make sure that all
-            // threads are done when we leave the timer callback function
-            FutureSynchronizer.addFuture ( QtConcurrent::run ( this,
-                                                               &CServer::MixEncodeTransmitData,
-                                                               iChanCnt,
-                                                               iCurChanID,
-                                                               iNumClients ) );
-#else
-            // process and transmit data single threaded
-            MixEncodeTransmitData ( iChanCnt,
-                                    iCurChanID,
-                                    iNumClients );
-#endif
+            // processing without multithreading
+            if ( !bUseMultithreading )
+            {
+                // generate a separate mix for each channel, OPUS encode the
+                // audio data and transmit the network packet
+                MixEncodeTransmitData ( iChanCnt, iNumClients );
+            }
+        }
+
+        // processing with multithreading
+        if ( bUseMultithreading )
+        {
+// TODO optimization of the MTBlockSize value
+            const int iMTBlockSize = 20; // every 20 users a new thread is created
+            const int iNumBlocks   = static_cast<int> ( std::ceil ( static_cast<double> ( iNumClients ) / iMTBlockSize ) );
+
+            for ( int iBlockCnt = 0; iBlockCnt < iNumBlocks; iBlockCnt++ )
+            {
+                // Generate a separate mix for each channel, OPUS encode the
+                // audio data and transmit the network packet. The work is
+                // distributed over all available processor cores.
+                // By using the future synchronizer we make sure that all
+                // threads are done when we leave the timer callback function.
+                const int iStartChanCnt = iBlockCnt * iMTBlockSize;
+                const int iStopChanCnt  = std::min ( ( iBlockCnt + 1 ) * iMTBlockSize - 1, iNumClients - 1 );
+
+                FutureSynchronizer.addFuture ( QtConcurrent::run ( this,
+                                                                   &CServer::MixEncodeTransmitDataBlocks,
+                                                                   iStartChanCnt,
+                                                                   iStopChanCnt,
+                                                                   iNumClients ) );
+            }
+
+            // make sure all concurrent run threads have finished when we leave this function
+            FutureSynchronizer.waitForFinished();
+            FutureSynchronizer.clearFutures();
         }
     }
     else
@@ -1038,14 +1060,27 @@ static CTimingMeas JitterMeas ( 1000, "test2.dat" ); JitterMeas.Measure(); // TE
     Q_UNUSED ( iUnused )
 }
 
+void CServer::MixEncodeTransmitDataBlocks ( const int iStartChanCnt,
+                                            const int iStopChanCnt,
+                                            const int iNumClients )
+{
+    // loop over all channels in the current block, needed for multithreading support
+    for ( int iChanCnt = iStartChanCnt; iChanCnt <= iStopChanCnt; iChanCnt++ )
+    {
+        MixEncodeTransmitData ( iChanCnt, iNumClients );
+    }
+}
+
 /// @brief Mix all audio data from all clients together, encode and transmit
 void CServer::MixEncodeTransmitData ( const int iChanCnt,
-                                      const int iCurChanID,
                                       const int iNumClients )
 {
     int               i, j, k, iUnused;
     CVector<double>&  vecdIntermProcBuf = vecvecsIntermediateProcBuf[iChanCnt]; // use reference for faster access
     CVector<int16_t>& vecsSendData      = vecvecsSendData[iChanCnt];            // use reference for faster access
+
+    // get actual ID of current channel
+    const int iCurChanID = vecChanIDsCurConChan[iChanCnt];
 
     // init intermediate processing vector with zeros since we mix all channels on that vector
     vecdIntermProcBuf.Reset ( 0 );
@@ -1474,15 +1509,17 @@ bool CServer::PutAudioData ( const CVector<uint8_t>& vecbyRecBuf,
             // reset channel info
             vecChannels[iCurChanID].ResetInfo();
 
-            // reset the channel gains of current channel, at the same
-            // time reset gains of this channel ID for all other channels
+            // reset the channel gains/pans of current channel, at the same
+            // time reset gains/pans of this channel ID for all other channels
             for ( int i = 0; i < iMaxNumChannels; i++ )
             {
                 vecChannels[iCurChanID].SetGain ( i, 1.0 );
+                vecChannels[iCurChanID].SetPan  ( i, 0.5 );
 
                 // other channels (we do not distinguish the case if
                 // i == iCurChanID for simplicity)
                 vecChannels[i].SetGain ( iCurChanID, 1.0 );
+                vecChannels[i].SetPan  ( iCurChanID, 0.5 );
             }
         }
         else
@@ -1645,7 +1682,7 @@ bool CServer::CreateLevelsForAllConChannels ( const int                        i
                                               vecNumAudioChannels[j] > 1 );
 
             // map value to integer for transmission via the protocol (4 bit available)
-            vecLevelsOut[j] = static_cast<uint16_t> ( ceil ( dCurSigLevelForMeterdB ) );
+            vecLevelsOut[j] = static_cast<uint16_t> ( std::ceil ( dCurSigLevelForMeterdB ) );
         }
     }
 

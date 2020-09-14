@@ -6,20 +6,13 @@ contains(CONFIG, "noupcasename") {
     TARGET = jamulus
 }
 
-# support multi-threading with OMP if requested
-contains(CONFIG, "multithreading") {
-    message(Multithreading in the server is enabled.)
-    message(NOTE THAT THE MULTITHREADING IMPLEMENTATION IS STILL EXPERIMENTAL AND MAY NOT BE STABLE.)
-    DEFINES += USE_MULTITHREADING
-    QT += concurrent
-}
-
 CONFIG += qt \
     thread \
     release
 
 QT += network \
-    xml
+    xml \
+    concurrent
 
 contains(CONFIG, "headless") {
     message(Headless mode activated.)
@@ -350,6 +343,9 @@ win32 {
     # we want to compile with C++11
     CONFIG += c++11
 
+    HEADERS += linux/sound.h
+    SOURCES += linux/sound.cpp
+
     # we assume to have lrintf() one moderately modern linux distributions
     # would be better to have that tested, though
     DEFINES += HAVE_LRINTF
@@ -369,8 +365,6 @@ win32 {
             PKGCONFIG += jack
         }
 
-        HEADERS += linux/sound.h
-        SOURCES += linux/sound.cpp
         DEFINES += WITH_SOUND
     }
 
@@ -384,22 +378,26 @@ win32 {
     BINDIR = $$absolute_path($$BINDIR, $$PREFIX)
     target.path = $$BINDIR
 
-    isEmpty(APPSDIR) {
-        APPSDIR = share/applications
-    }
-    APPSDIR = $$absolute_path($$APPSDIR, $$PREFIX)
-    desktop.path = $$APPSDIR
-    QMAKE_SUBSTITUTES += distributions/jamulus.desktop.in
-    desktop.files = distributions/jamulus.desktop
+    contains(CONFIG, "headless") {
+        INSTALLS += target
+    } else {
+        isEmpty(APPSDIR) {
+            APPSDIR = share/applications
+        }
+        APPSDIR = $$absolute_path($$APPSDIR, $$PREFIX)
+        desktop.path = $$APPSDIR
+        QMAKE_SUBSTITUTES += distributions/jamulus.desktop.in
+        desktop.files = distributions/jamulus.desktop
 
-    isEmpty(ICONSDIR) {
-        ICONSDIR = share/icons/hicolor/512x512/apps
-    }
-    ICONSDIR = $$absolute_path($$ICONSDIR, $$PREFIX)
-    icons.path = $$ICONSDIR
-    icons.files = distributions/jamulus.png
+        isEmpty(ICONSDIR) {
+            ICONSDIR = share/icons/hicolor/512x512/apps
+        }
+        ICONSDIR = $$absolute_path($$ICONSDIR, $$PREFIX)
+        icons.path = $$ICONSDIR
+        icons.files = distributions/jamulus.png
 
-    INSTALLS += target desktop icons
+        INSTALLS += target desktop icons
+    }
 }
 
 RCC_DIR = src/res

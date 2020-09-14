@@ -1,9 +1,17 @@
 
 
 
+
 3.5.10git <- NOTE: the release version number will be 3.5.11
 
+- support a check for updates (#370)
+
 - added an optional server list whitelist filter (#413)
+
+- added a command line argument to enable multithreading in the server (#339)
+
+- added support for split protocol messages (fixes bug with large number of clients
+  connected to a server, #547)
 
 - store recorder settings, coded by pljones (#313)
 
@@ -11,11 +19,14 @@
 
 - added Jack audio audio latency calculation, coded by bflamig (#437)
 
+- show the server name in the title bar (#559)
+
+- bug fix: crash when using the Jack backend and quickly reconfiguring, coded by hselasky (#543)
+
 - bug fix: Alt+h shortcut to open the Chat dialog did not work, use Alt+c instead
 
+- bug fix: pan is not correctly initialized in the server on a new connection (#537)
 
-TODO improve multithreading -> merge branch into master
-TODO use command line argument to enable multithreading instead of qmake CONFIG
 
 
 
@@ -194,7 +205,7 @@ TODO use command line argument to enable multithreading instead of qmake CONFIG
 
 - new command line option -d to disconnect all clients on shutdown of the server (#161)
 
-- bug fix: for mono capture jack audio interface Jamulus complains it
+- bug fix: for mono capture Jack audio interface Jamulus complains it
   cannot make connections (#137)
 
 - bug fix: fixed that Jamulus segfaults when jackd is restarted (#122, #127)

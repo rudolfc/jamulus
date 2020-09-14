@@ -66,6 +66,7 @@ int main ( int argc, char** argv )
     bool         bShowComplRegConnList       = false;
     bool         bDisconnectAllClientsOnQuit = false;
     bool         bUseDoubleSystemFrameSize   = true; // default is 128 samples frame size
+    bool         bUseMultithreading          = false;
     bool         bShowAnalyzerConsole        = false;
     bool         bMuteStream                 = false;
     bool         bCentServPingServerInList   = false;
@@ -133,7 +134,7 @@ int main ( int argc, char** argv )
         }
 
 
-        // Use 64 samples frame size mode ----------------------------------------------------
+        // Use 64 samples frame size mode --------------------------------------
         if ( GetFlagArgument ( argv,
                                i,
                                "-F",
@@ -142,6 +143,19 @@ int main ( int argc, char** argv )
             bUseDoubleSystemFrameSize = false; // 64 samples frame size
             tsConsole << "- using " << SYSTEM_FRAME_SIZE_SAMPLES << " samples frame size mode" << endl;
             CommandLineOptions << "--fastupdate";
+            continue;
+        }
+
+
+        // Use multithreading --------------------------------------------------
+        if ( GetFlagArgument ( argv,
+                               i,
+                               "-T",
+                               "--multithreading" ) )
+        {
+            bUseMultithreading = true;
+            tsConsole << "- using multithreading" << endl;
+            CommandLineOptions << "--multithreading";
             continue;
         }
 
@@ -519,6 +533,8 @@ int main ( int argc, char** argv )
 #endif
     }
 
+
+    // Dependencies ------------------------------------------------------------
 #ifdef HEADLESS
     if ( bUseGUI )
     {
@@ -531,8 +547,12 @@ int main ( int argc, char** argv )
     Q_UNUSED ( bMuteStream )           // avoid compiler warnings
 #endif
 
+    // the inifile is not supported for the headless server mode
+    if ( !bIsClient && !bUseGUI && !strIniFileName.isEmpty() )
+    {
+        tsConsole << "No initialization file support in headless server mode." << endl;
+    }
 
-    // Dependencies ------------------------------------------------------------
     // per definition: if we are in "GUI" server mode and no central server
     // address is given, we use the default central server address
     if ( !bIsClient && bUseGUI && strCentralServer.isEmpty() )
@@ -667,6 +687,7 @@ int main ( int argc, char** argv )
                              bCentServPingServerInList,
                              bDisconnectAllClientsOnQuit,
                              bUseDoubleSystemFrameSize,
+                             bUseMultithreading,
                              eLicenceType );
 
 #ifndef HEADLESS
@@ -751,7 +772,8 @@ QString UsageArguments ( char **argv )
         "Usage: " + QString ( argv[0] ) + " [option] [optional argument]\n"
         "\nRecognized options:\n"
         "  -h, -?, --help        display this help text and exit\n"
-        "  -i, --inifile         initialization file name\n"
+        "  -i, --inifile         initialization file name (not\n"
+        "                        supported for headless server mode)\n"
         "  -n, --nogui           disable GUI\n"
         "  -p, --port            set your local port number\n"
         "  -t, --notranslation   disable translation (use englisch language)\n"
@@ -760,8 +782,9 @@ QString UsageArguments ( char **argv )
         "  -a, --servername      server name, required for HTML status\n"
         "  -d, --discononquit    disconnect all clients on quit\n"
         "  -e, --centralserver   address of the central server\n"
+        "                        (or 'localhost' to be a central server)\n"
         "  -f, --listfilter      server list whitelist filter in the format:\n"
-        "                        [IP address 1];[IP address 2];[IP address 3]; ..."
+        "                        [IP address 1];[IP address 2];[IP address 3]; ...\n"
         "  -F, --fastupdate      use 64 samples frame size mode\n"
         "  -g, --pingservers     ping servers in list to keep NAT port open\n"
         "                        (central server only)\n"
@@ -778,6 +801,8 @@ QString UsageArguments ( char **argv )
         "  -R, --recording       enables recording and sets directory to contain\n"
         "                        recorded jams\n"
         "  -s, --server          start server\n"
+        "  -T, --multithreading  use multithreading to make better use of\n"
+        "                        multi-core CPUs and support more clients\n"
         "  -u, --numchannels     maximum number of channels\n"
         "  -w, --welcomemessage  welcome message on connect\n"
         "  -z, --startminimized  start minimizied\n"
